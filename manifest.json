@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Investing.com Portfolio Overlay",
+  "description": "Display your portfolio holdings on investing.com asset pages",
+  "version": "1.0.0",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.investing.com/*"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.investing.com/*"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Portfolio Overlay"
+  }
+}

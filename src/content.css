@@ -1,0 +1,71 @@
+/* Portfolio Overlay Panel Styles */
+.portfolio-overlay-panel {
+  background: linear-gradient(135deg, #1a2332 0%, #1e2a3a 100%);
+  border: 1px solid #3a4a5a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.portfolio-overlay-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.portfolio-overlay-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fac761;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.portfolio-overlay-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+}
+
+.portfolio-overlay-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.portfolio-overlay-label {
+  font-size: 10px;
+  color: #8a94a6;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.portfolio-overlay-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.portfolio-overlay-value.positive {
+  color: #26a69a;
+}
+
+.portfolio-overlay-value.negative {
+  color: #ef5350;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .portfolio-overlay-panel {
+    width: 100%;
+  }
+
+  .portfolio-overlay-content {
+    gap: 12px;
+  }
+}
