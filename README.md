@@ -1,0 +1,37 @@
+# Investing.com Portfolio Overlay
+
+A Chrome extension that displays your portfolio holdings directly on investing.com asset pages.
+
+## What it does
+
+When you browse stock or ETF pages on investing.com, this extension shows a panel with your position details:
+
+- **Quantity** - Number of shares you own
+- **Average Buy Price** - Your cost basis
+- **Total Value** - Current market value of your position
+- **P/L** - Profit/loss amount and percentage
+
+The extension automatically aggregates holdings across all your portfolios.
+
+## Installation
+
+1. Open `chrome://extensions/` in Chrome
+2. Enable "Developer mode" (top right)
+3. Click "Load unpacked"
+4. Select the `investing_com_extension` folder
+
+## Usage
+
+1. Log in to your investing.com account
+2. Visit any equity or ETF page (e.g., `/equities/apple-computer-inc`)
+3. If you own that asset, your position details will appear on the page
+
+Click the extension icon to:
+- Force refresh portfolio data
+- Adjust cache duration
+- Configure which page paths to monitor
+
+## Requirements
+
+- Chrome browser
+- Active investing.com account with portfolio holdings

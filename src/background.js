@@ -1,3 +1,5 @@
+// Portfolio Overlay Background Service Worker
+
 // Default settings
 const DEFAULT_SETTINGS = {
   cacheDurationMinutes: 10,
@@ -22,7 +24,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleGetPortfolioData(message.symbol, message.isin, message.pairId)
       .then(sendResponse)
       .catch(err => sendResponse({ error: err.message }));
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (message.type === 'FORCE_REFRESH') {
@@ -36,6 +38,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     getStatus()
       .then(sendResponse)
       .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+
+  if (message.type === 'DEBUG_STORAGE') {
+    chrome.storage.local.get(['portfolioData'], data => {
+      const summary = {};
+      for (const [symbol, holding] of Object.entries(data.portfolioData || {})) {
+        summary[symbol] = { qty: holding.qty, portfolios: holding.portfolios };
+      }
+      sendResponse(summary);
+    });
     return true;
   }
 
@@ -70,7 +83,6 @@ async function handleGetPortfolioData(symbol, isin, pairId) {
     try {
       portfolioData = await fetchAndParsePortfolio();
     } catch (err) {
-      console.error('Failed to refresh portfolio:', err);
       // Continue with stale cache if available
     }
   }
@@ -114,59 +126,51 @@ async function fetchAndParsePortfolio() {
 
   const mainHtml = await mainResponse.text();
 
-  // Extract all holdings portfolio tabs (those with positionIcon, not watchlistIcon)
+  // Extract all holdings portfolio tabs
   const holdingsPortfolios = extractHoldingsPortfolios(mainHtml);
 
-  // Parse the current page's holdings (the default/first one)
-  let allPortfolioData = parsePortfolioHTML(mainHtml);
+  let allPortfolioData = {};
 
-  // Add portfolio name to first portfolio's holdings
-  if (holdingsPortfolios.length > 0) {
-    const firstPortfolioName = holdingsPortfolios[0].name;
-    for (const symbol of Object.keys(allPortfolioData)) {
-      allPortfolioData[symbol].portfolios = [firstPortfolioName];
-    }
-  }
-
-  // Fetch each additional holdings portfolio
-  for (const portfolio of holdingsPortfolios.slice(1)) { // Skip first, already parsed
+  // Fetch each portfolio using its publicId
+  for (const portfolio of holdingsPortfolios) {
     try {
-      const response = await fetch(`https://www.investing.com/portfolio/?portfolioID=${portfolio.publicId}`, {
-        credentials: 'include'
-      });
+      let portfolioHtml = mainHtml;
 
-      if (response.ok) {
-        const html = await response.text();
-        const portfolioData = parsePortfolioHTML(html);
+      // If this portfolio has a publicId, fetch it specifically
+      if (portfolio.publicId) {
+        const portfolioUrl = `https://www.investing.com/portfolio/?portfolioID=${encodeURIComponent(portfolio.publicId)}`;
+        const response = await fetch(portfolioUrl, { credentials: 'include' });
+        if (response.ok) {
+          portfolioHtml = await response.text();
+        } else {
+          continue;
+        }
+      }
 
-        // Merge holdings - if same symbol exists, combine quantities
-        for (const [symbol, holding] of Object.entries(portfolioData)) {
-          if (allPortfolioData[symbol]) {
-            // Same symbol in multiple portfolios - combine
-            const existing = allPortfolioData[symbol];
-            const combinedQty = existing.qty + holding.qty;
-            const combinedValue = existing.totalValue + holding.totalValue;
-            // Weighted average price
-            const combinedAvgPrice = (existing.avgPrice * existing.qty + holding.avgPrice * holding.qty) / combinedQty;
+      // Parse holdings from this portfolio's HTML
+      const portfolioData = parsePortfolioHTML(portfolioHtml);
 
-            allPortfolioData[symbol] = {
-              ...existing,
-              qty: combinedQty,
-              avgPrice: combinedAvgPrice,
-              totalValue: combinedValue,
-              portfolios: [...(existing.portfolios || [portfolio.name]), portfolio.name]
-            };
-          } else {
-            allPortfolioData[symbol] = {
-              ...holding,
-              portfolios: [portfolio.name]
-            };
-          }
+      // Merge into allPortfolioData
+      for (const [symbol, holding] of Object.entries(portfolioData)) {
+        if (allPortfolioData[symbol]) {
+          // Aggregate quantities and calculate weighted average price
+          const existing = allPortfolioData[symbol];
+          const newQty = existing.qty + holding.qty;
+          const newAvgPrice = (existing.avgPrice * existing.qty + holding.avgPrice * holding.qty) / newQty;
+          const newTotalValue = existing.totalValue + holding.totalValue;
+
+          allPortfolioData[symbol] = {
+            ...existing,
+            qty: newQty,
+            avgPrice: newAvgPrice,
+            totalValue: newTotalValue
+          };
+        } else {
+          allPortfolioData[symbol] = holding;
         }
       }
     } catch (err) {
-      console.error(`Failed to fetch portfolio ${portfolio.name}:`, err);
-      // Continue with other portfolios
+      // Continue with next portfolio
     }
   }
 
@@ -182,38 +186,35 @@ async function fetchAndParsePortfolio() {
 function extractHoldingsPortfolios(html) {
   const portfolios = [];
 
-  // Match portfolio tabs - look for li elements with portfolioTab class
-  // Holdings have positionIcon, watchlists have watchlistIcon
-  const tabRegex = /<li[^>]*class="[^"]*portfolioTab[^"]*"[^>]*>[\s\S]*?<span class="positionIcon[^"]*"><\/span>[\s\S]*?data-publicid="([^"]*)"[\s\S]*?value="([^"]*)"[\s\S]*?<\/li>/gi;
+  // Find <li> tags with portfolioTab class and capture content until closing </li>
+  const liRegex = /<li[^>]+portfolioTab[^>]*>([\s\S]*?)<\/li>/gi;
 
   let match;
-  while ((match = tabRegex.exec(html)) !== null) {
-    const publicId = match[1];
-    const name = match[2];
-    if (publicId && name) {
-      portfolios.push({ publicId, name });
-    }
-  }
+  while ((match = liRegex.exec(html)) !== null) {
+    const liTag = match[0];
+    const liContent = match[1];
 
-  // If no tabs found with the complex regex, try a simpler approach
-  if (portfolios.length === 0) {
-    // Look for tabs that have positionIcon (not watchlistIcon)
-    const simpleRegex = /<li[^>]*class="[^"]*portfolioTab[^"]*"[^>]*>([\s\S]*?)<\/li>/gi;
+    // Extract numeric ID and title from the <li> tag
+    const numericId = extractAttr(liTag, 'data-portfolio-id');
+    const title = extractAttr(liTag, 'title');
 
-    while ((match = simpleRegex.exec(html)) !== null) {
-      const tabContent = match[1];
+    // Look for data-publicid anywhere in the <li> content (it's URL-encoded)
+    const publicIdMatch = liContent.match(/data-publicid="([^"]+)"/i);
+    let publicId = publicIdMatch ? decodeURIComponent(publicIdMatch[1]) : '';
 
-      // Only process if it has positionIcon (holdings), not watchlistIcon
-      if (tabContent.includes('positionIcon') && !tabContent.includes('watchlistIcon')) {
-        const publicIdMatch = tabContent.match(/data-publicid="([^"]*)"/);
-        const nameMatch = tabContent.match(/value="([^"]*)"/);
+    // Get content after this <li> tag to check for positionIcon
+    const afterMatch = html.substring(match.index, match.index + 500);
 
-        if (publicIdMatch && nameMatch) {
-          portfolios.push({
-            publicId: publicIdMatch[1],
-            name: nameMatch[1]
-          });
-        }
+    // Only include if it has positionIcon (holdings), not watchlistIcon
+    if (afterMatch.includes('positionIcon') && !afterMatch.includes('watchlistIcon')) {
+      // Avoid duplicates
+      if (numericId && !portfolios.find(p => p.numericId === numericId)) {
+        portfolios.push({
+          id: publicId || numericId,
+          numericId: numericId,
+          publicId: publicId,
+          name: title
+        });
       }
     }
   }
@@ -224,9 +225,6 @@ function extractHoldingsPortfolios(html) {
 // Parse portfolio HTML to extract holdings using regex (DOMParser not available in service workers)
 function parsePortfolioHTML(html) {
   const portfolioData = {};
-
-  // Match all <tr class="openPositionTR" ...> elements with their attributes
-  const rowRegex = /<tr[^>]*class="openPositionTR[^"]*"[^>]*data-pair-id="([^"]*)"[^>]*data-amount="([^"]*)"[^>]*data-pair-name="([^"]*)"[^>]*data-open-price="([^"]*)"[^>]*data-fullname="([^"]*)"[^>]*>([\s\S]*?)<\/tr>/gi;
 
   // Alternative regex that's more flexible with attribute order
   const trRegex = /<tr[^>]*class="openPositionTR[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -251,7 +249,6 @@ function parsePortfolioHTML(html) {
       const symbol = symbolMatch ? symbolMatch[1].trim() : '';
 
       // Extract market value from td with data-column-name="sum_pos_market_value"
-      // The title attribute may come after class, so we need a more flexible regex
       const valueMatch = trContent.match(/data-column-name="sum_pos_market_value"[^>]*?title="([^"]*)"/i);
       const totalValueStr = valueMatch ? valueMatch[1] : '';
       let totalValue = parseMoneyValue(totalValueStr);
@@ -269,21 +266,36 @@ function parsePortfolioHTML(html) {
       const url = urlMatch ? urlMatch[1] : '';
 
       if (symbol) {
-        portfolioData[symbol] = {
-          symbol,
-          name,
-          fullName,
-          pairId,
-          qty: amount,
-          avgPrice,
-          totalValue,
-          openTime,
-          url,
-          currency: currencySymbol
-        };
+        if (portfolioData[symbol]) {
+          // Same symbol - aggregate quantities and calculate weighted average price
+          const existing = portfolioData[symbol];
+          const newQty = existing.qty + amount;
+          const newAvgPrice = (existing.avgPrice * existing.qty + avgPrice * amount) / newQty;
+          const newTotalValue = existing.totalValue + totalValue;
+
+          portfolioData[symbol] = {
+            ...existing,
+            qty: newQty,
+            avgPrice: newAvgPrice,
+            totalValue: newTotalValue
+          };
+        } else {
+          portfolioData[symbol] = {
+            symbol,
+            name,
+            fullName,
+            pairId,
+            qty: amount,
+            avgPrice,
+            totalValue,
+            openTime,
+            url,
+            currency: currencySymbol
+          };
+        }
       }
     } catch (err) {
-      console.error('Error parsing portfolio row:', err);
+      // Skip malformed rows
     }
   }
 

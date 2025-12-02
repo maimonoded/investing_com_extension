@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const holdingsCountEl = document.getElementById('holdingsCount');
   const refreshBtn = document.getElementById('refreshBtn');
   const saveBtn = document.getElementById('saveBtn');
+  const debugBtn = document.getElementById('debugBtn');
+  const debugOutput = document.getElementById('debugOutput');
   const cacheDurationInput = document.getElementById('cacheDuration');
   const monitoredPathsInput = document.getElementById('monitoredPaths');
 
@@ -104,4 +106,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshBtn.querySelector('.btn-text').hidden = isRefreshing;
     refreshBtn.querySelector('.btn-loading').hidden = !isRefreshing;
   }
+
+  // Debug button handler
+  debugBtn.addEventListener('click', async () => {
+    try {
+      const data = await chrome.runtime.sendMessage({ type: 'DEBUG_STORAGE' });
+      debugOutput.style.display = 'block';
+      debugOutput.textContent = JSON.stringify(data, null, 2);
+    } catch (err) {
+      debugOutput.style.display = 'block';
+      debugOutput.textContent = 'Error: ' + err.message;
+    }
+  });
 });
