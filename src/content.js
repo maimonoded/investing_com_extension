@@ -44,7 +44,6 @@
       });
 
       if (response.error) {
-        console.error('Portfolio Overlay Error:', response.error);
         return;
       }
 
@@ -52,7 +51,7 @@
         injectHoldingsPanel(response.match, assetInfo);
       }
     } catch (err) {
-      console.error('Portfolio Overlay Error:', err);
+      // Silently handle errors
     }
   }
 
@@ -100,7 +99,7 @@
           pairId: null
         };
       } catch (err) {
-        console.error('Failed to parse asset meta:', err);
+        // Ignore parse errors
       }
     }
 
@@ -136,17 +135,25 @@
     panel.id = 'portfolio-overlay-panel';
     panel.className = 'portfolio-overlay-panel';
 
+    // Get currency from holding data
+    const currency = holding.currency || '$';
+
     // Format values
     const qty = holding.qty?.toLocaleString() || '0';
-    const avgPrice = formatCurrency(holding.avgPrice);
-    const currentPrice = assetInfo.lastPrice ? parseFloat(assetInfo.lastPrice) : null;
+    const avgPriceFormatted = formatCurrency(holding.avgPrice, currency);
+
+    // Get current price from page (live) or fall back to meta tag
+    let currentPrice = getCurrentPriceFromPage();
+    if (!currentPrice) {
+      currentPrice = assetInfo.lastPrice ? parseFloat(assetInfo.lastPrice) : null;
+    }
 
     // Calculate total value from current price if available, otherwise use stored value
     let totalValue = holding.totalValue;
     if (currentPrice && holding.qty) {
       totalValue = currentPrice * holding.qty;
     }
-    const totalValueFormatted = formatCurrency(totalValue);
+    const totalValueFormatted = formatCurrency(totalValue, currency);
 
     // Calculate P/L if we have current price
     let plHtml = '';
@@ -158,7 +165,7 @@
       plHtml = `
         <div class="portfolio-overlay-item">
           <span class="portfolio-overlay-label">P/L</span>
-          <span class="portfolio-overlay-value ${plClass}">${plSign}${formatCurrency(pl)} (${plSign}${plPercent.toFixed(2)}%)</span>
+          <span class="portfolio-overlay-value ${plClass}">${plSign}${formatCurrency(pl, currency)} (${plSign}${plPercent.toFixed(2)}%)</span>
         </div>
       `;
     }
@@ -174,7 +181,7 @@
         </div>
         <div class="portfolio-overlay-item">
           <span class="portfolio-overlay-label">Avg. Buy Price</span>
-          <span class="portfolio-overlay-value">${avgPrice}</span>
+          <span class="portfolio-overlay-value">${avgPriceFormatted}</span>
         </div>
         <div class="portfolio-overlay-item">
           <span class="portfolio-overlay-label">Total Value</span>
@@ -222,14 +229,90 @@
     }
   }
 
+  // Get current price from page
+  function getCurrentPriceFromPage() {
+    // Try the data-test attribute first
+    const priceEl = document.querySelector('[data-test="instrument-price-last"]');
+    if (priceEl) {
+      const priceText = priceEl.textContent.trim();
+      return parsePrice(priceText);
+    }
+
+    // Fallback: look for price in other common selectors
+    const altPriceEl = document.querySelector('.instrument-price_instrument-price__2w9MW [data-test="instrument-price-last"]');
+    if (altPriceEl) {
+      return parsePrice(altPriceEl.textContent.trim());
+    }
+
+    return null;
+  }
+
+  // Parse price string to number
+  function parsePrice(priceStr) {
+    if (!priceStr) return null;
+    // Remove currency symbols, commas, spaces
+    const cleaned = priceStr.replace(/[^0-9.-]/g, '');
+    const price = parseFloat(cleaned);
+    return isNaN(price) ? null : price;
+  }
+
+  // Decode HTML entities (in case storage has encoded values)
+  function decodeHtmlEntities(str) {
+    if (!str) return str;
+    const entities = {
+      '&#x20ac;': '€',
+      '&euro;': '€',
+      '&#x24;': '$',
+      '&#36;': '$',
+      '&#x00a3;': '£',
+      '&pound;': '£',
+      '&#x00a5;': '¥',
+      '&yen;': '¥'
+    };
+    let result = str;
+    for (const [entity, char] of Object.entries(entities)) {
+      result = result.replace(new RegExp(entity, 'gi'), char);
+    }
+    // Handle remaining numeric entities
+    result = result.replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    result = result.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)));
+    return result;
+  }
+
+  // Map currency symbols to ISO codes
+  function getCurrencyCode(symbol) {
+    // Decode HTML entities first
+    const decoded = decodeHtmlEntities(symbol);
+    const currencyMap = {
+      '$': 'USD',
+      'C$': 'CAD',
+      '€': 'EUR',
+      '£': 'GBP',
+      '¥': 'JPY',
+      'CHF': 'CHF',
+      'A$': 'AUD',
+      'NZ$': 'NZD',
+      'HK$': 'HKD',
+      'S$': 'SGD',
+      '₹': 'INR',
+      '₪': 'ILS',
+      'kr': 'SEK',  // Could also be NOK/DKK
+      'zł': 'PLN',
+      'R$': 'BRL',
+      '₩': 'KRW'
+    };
+    return currencyMap[decoded] || 'USD';
+  }
+
   // Format number as currency
-  function formatCurrency(value) {
+  function formatCurrency(value, currencySymbol = '$') {
     if (value === null || value === undefined || isNaN(value)) {
       return '-';
     }
+    const currencyCode = getCurrencyCode(currencySymbol);
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: currencyCode,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(value);

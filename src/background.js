@@ -244,6 +244,7 @@ function parsePortfolioHTML(html) {
       const name = extractAttr(trTag, 'data-pair-name') || '';
       const fullName = extractAttr(trTag, 'data-fullname') || '';
       const openTime = extractAttr(trTag, 'data-open-time') || '';
+      const currencySymbol = extractAttr(trTag, 'data-commission-cur') || '$';
 
       // Extract symbol from td with data-column-name="sum_pos_fpb_symbols"
       const symbolMatch = trContent.match(/data-column-name="sum_pos_fpb_symbols"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
@@ -277,7 +278,8 @@ function parsePortfolioHTML(html) {
           avgPrice,
           totalValue,
           openTime,
-          url
+          url,
+          currency: currencySymbol
         };
       }
     } catch (err) {
@@ -292,7 +294,43 @@ function parsePortfolioHTML(html) {
 function extractAttr(tag, attrName) {
   const regex = new RegExp(`${attrName}="([^"]*)"`, 'i');
   const match = tag.match(regex);
-  return match ? match[1] : '';
+  return match ? decodeHtmlEntities(match[1]) : '';
+}
+
+// Decode HTML entities
+function decodeHtmlEntities(str) {
+  if (!str) return str;
+  const entities = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&apos;': "'",
+    '&#x20ac;': '€',
+    '&euro;': '€',
+    '&#x24;': '$',
+    '&#36;': '$',
+    '&#x00a3;': '£',
+    '&pound;': '£',
+    '&#x00a5;': '¥',
+    '&yen;': '¥',
+    '&#x20a3;': '₣',
+    '&#x20b9;': '₹',
+    '&#x20aa;': '₪'
+  };
+
+  // Replace named/numeric entities
+  let result = str;
+  for (const [entity, char] of Object.entries(entities)) {
+    result = result.replace(new RegExp(entity, 'gi'), char);
+  }
+
+  // Handle any remaining numeric entities (&#xNNNN; or &#NNNN;)
+  result = result.replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  result = result.replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)));
+
+  return result;
 }
 
 // Parse money value like "$173,982.64" or "$51.17K" to number
