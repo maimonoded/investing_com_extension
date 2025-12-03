@@ -36,19 +36,16 @@ async function setupRefreshAlarm(periodInMinutes) {
     delayInMinutes: Math.max(1, periodInMinutes),
     periodInMinutes: periodInMinutes
   });
-  console.log(`Alarm set: first in ${periodInMinutes} min, then every ${periodInMinutes} min`);
 }
 
 // Listen for alarm events (only if alarms API is available)
 if (chrome.alarms) {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === REFRESH_ALARM_NAME) {
-      console.log('Alarm fired: refreshing portfolio data...');
       try {
         await fetchAndParsePortfolio();
-        console.log('Alarm refresh completed successfully');
       } catch (err) {
-        console.warn('Alarm refresh failed:', err.message);
+        // Silently fail - will retry on next alarm or user request
       }
     }
   });
