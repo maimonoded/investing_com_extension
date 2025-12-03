@@ -1,0 +1,9 @@
+The alarms permission is used to periodically refresh cached portfolio data in the background.
+
+The extension caches portfolio data locally to improve performance. The alarms API allows the extension to:
+
+1. Schedule periodic background refreshes - Keep cached portfolio data up-to-date without requiring user interaction
+2. Respect user preferences - The refresh interval is configurable by the user (default: 10 minutes)
+3. Ensure data accuracy - Automatically update holdings when portfolios change on investing.com
+
+Without this permission, users would need to manually refresh their portfolio data each time they want to see updated holdings. The alarm-based refresh runs only when the browser is open and does not wake the system.

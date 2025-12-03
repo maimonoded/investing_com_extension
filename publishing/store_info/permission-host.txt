@@ -1,0 +1,7 @@
+Host permission for investing.com is required for two purposes:
+
+1. Fetch portfolio data - The extension reads the user's portfolio holdings from investing.com using their existing logged-in session. This is done by fetching the portfolio pages and parsing the holdings data.
+
+2. Display holdings on asset pages - The extension injects a panel on investing.com asset pages (stocks, ETFs) to show the user's position details for that specific asset.
+
+The extension only operates on investing.com and does not access any other websites. It reads portfolio data that the user already has access to through their investing.com account and displays it in a more convenient location on the page.

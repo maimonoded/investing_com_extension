@@ -63,6 +63,10 @@ The extension implements a two-round retry mechanism:
 
 This retry mechanism helps in many cases but does not guarantee 100% success rate. If you notice missing holdings, try clicking "Force Refresh" in the extension popup.
 
+## Disclaimer
+
+This extension was created for personal use and is provided "AS IS" without warranty of any kind. This extension is not affiliated with, endorsed by, or associated with investing.com in any way.
+
 ## Credits
 
 Most of the code in this project was generated with [Claude](https://claude.ai) by Anthropic.

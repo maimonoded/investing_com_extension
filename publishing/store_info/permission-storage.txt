@@ -1,0 +1,11 @@
+The storage permission is used to cache portfolio data locally in the user's browser.
+
+When the user visits investing.com, the extension fetches their portfolio holdings. This data is stored locally using chrome.storage.local to:
+
+1. Improve performance - Avoid fetching portfolio data on every page load
+2. Reduce server requests - Minimize calls to investing.com's servers
+3. Enable instant display - Show holdings immediately when visiting asset pages
+
+The cached data includes: portfolio names, asset symbols, quantities, and average buy prices. No sensitive information like passwords or authentication tokens is stored.
+
+Users can clear this cached data at any time using the "Clear All Data" button in the extension popup.

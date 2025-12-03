@@ -45,6 +45,10 @@ This extension does NOT share any data with third parties.
 
 For questions about this privacy policy, please open an issue on the project's GitHub repository.
 
+## Disclaimer
+
+This extension was created for personal use and is provided "AS IS" without warranty of any kind. This extension is not affiliated with, endorsed by, or associated with investing.com in any way.
+
 ## Changes
 
 Any changes to this privacy policy will be reflected in this document with an updated date.

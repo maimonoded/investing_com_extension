@@ -1,0 +1,5 @@
+This extension displays your investing.com portfolio holdings directly on asset pages.
+
+When you visit a stock or ETF page on investing.com, the extension shows your position details (quantity, average buy price, total value, and profit/loss) in a panel on the page. This eliminates the need to switch between the asset page and your portfolio to see your holdings.
+
+The extension only works on investing.com and only displays data from your existing investing.com portfolios.
