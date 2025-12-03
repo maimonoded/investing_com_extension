@@ -8,10 +8,10 @@ When you browse stock or ETF pages on investing.com, this extension shows a pane
 
 - **Quantity** - Number of shares you own
 - **Average Buy Price** - Your cost basis
-- **Total Value** - Current market value of your position
-- **P/L** - Profit/loss amount and percentage
+- **Total Value** - Current market value of your position (updates in real-time)
+- **P/L** - Profit/loss amount and percentage (updates in real-time)
 
-The extension automatically aggregates holdings across all your portfolios.
+The extension automatically aggregates holdings across all your portfolios and updates Total Value and P/L in real-time as the page price changes.
 
 ## Installation
 

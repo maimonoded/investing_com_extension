@@ -7,7 +7,10 @@ Chrome Extension (Manifest V3) that displays investing.com portfolio holdings on
 ## Architecture
 
 - **Service Worker** (`src/background.js`): Fetches and caches portfolio data from investing.com
-- **Content Script** (`src/content.js`): Injects holdings panel on asset pages
+- **Content Scripts**:
+  - `src/panel-state.js`: State management with computed getters (totalValue, P/L)
+  - `src/panel-ui.js`: Panel rendering and real-time DOM updates
+  - `src/content.js`: Orchestration, navigation detection, price observer
 - **Popup** (`src/popup.html`, `src/popup.js`): Settings and manual refresh
 
 ## Key Technical Details
@@ -35,10 +38,23 @@ Chrome Extension (Manifest V3) that displays investing.com portfolio holdings on
 manifest.json          # Extension manifest (v3)
 src/
   background.js        # Service worker - portfolio fetching/caching
-  content.js           # Content script - panel injection
+  panel-state.js       # Panel state object with computed values
+  panel-ui.js          # Panel rendering and DOM updates
+  content.js           # Content script - orchestration
   content.css          # Panel styling
   popup.html/js/css    # Extension popup UI
 ```
+
+### Content Script Load Order
+Files load in manifest order (dependencies first):
+1. `panel-state.js` - State object (no dependencies)
+2. `panel-ui.js` - UI functions (depends on panelState)
+3. `content.js` - Orchestration (depends on both)
+
+### Real-Time Price Updates
+- MutationObserver watches `[data-test="instrument-price-last"]` element
+- On price change: `panelState.setCurrentPrice()` → `updatePanelUI()`
+- Only Total Value and P/L update (Quantity and Avg Price are static)
 
 ## Conventions
 
