@@ -13,6 +13,16 @@ When you browse stock or ETF pages on investing.com, this extension shows a pane
 
 The extension automatically aggregates holdings across all your portfolios and updates Total Value and P/L in real-time as the page price changes.
 
+## Screenshots
+
+### Position Panel on Asset Page
+![NVDA Position](publishing/screenshots/Screenshot-NVDA.png)
+
+![NTLA Position](publishing/screenshots/Screenshot-NTLA.png)
+
+### Extension Settings
+![Settings Popup](publishing/screenshots/Screenshot-settings.png)
+
 ## Installation
 
 1. Open `chrome://extensions/` in Chrome
