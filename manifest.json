@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Investing.com Portfolio Overlay",
   "description": "Display your portfolio holdings on investing.com asset pages",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "icons": {
     "16": "publishing/icons/icon16-trans.png",
     "48": "publishing/icons/icon48-trans.png",
