@@ -35,3 +35,20 @@ Click the extension icon to:
 
 - Chrome browser
 - Active investing.com account with portfolio holdings
+
+## Known Problems
+
+### Portfolio Fetch Redirect Issue
+
+When fetching individual portfolio data, the investing.com server sometimes redirects requests to the main portfolio page instead of returning the specific portfolio requested. This causes the extension to receive holdings from the wrong portfolio.
+
+**Symptoms:**
+- Some portfolios may show missing holdings
+- Debug output shows "mismatch" errors for certain portfolios
+
+**Mitigation:**
+The extension implements a two-round retry mechanism:
+1. First round fetches all portfolios quickly and saves successful results immediately
+2. Failed portfolios are retried with 10-second delays between each attempt
+
+This retry mechanism helps in many cases but does not guarantee 100% success rate. If you notice missing holdings, try clicking "Force Refresh" in the extension popup.

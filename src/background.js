@@ -6,6 +6,9 @@ const DEFAULT_SETTINGS = {
   monitoredPaths: ['/equities/', '/etfs/']
 };
 
+// Alarm name for periodic refresh
+const REFRESH_ALARM_NAME = 'portfolioRefresh';
+
 // Initialize storage with defaults on install
 chrome.runtime.onInstalled.addListener(async () => {
   const data = await chrome.storage.local.get(['settings']);
@@ -16,7 +19,50 @@ chrome.runtime.onInstalled.addListener(async () => {
       portfolioData: {}
     });
   }
+  // Set up periodic refresh alarm using saved settings (or defaults if none)
+  const settings = data.settings || DEFAULT_SETTINGS;
+  await setupRefreshAlarm(settings.cacheDurationMinutes);
 });
+
+// Set up or update the refresh alarm
+async function setupRefreshAlarm(periodInMinutes) {
+  if (!chrome.alarms) return; // Guard for missing alarms API
+  // Clear existing alarm first
+  await chrome.alarms.clear(REFRESH_ALARM_NAME);
+  // Create new alarm with the specified period
+  // delayInMinutes: first alarm fires after this delay (min 1 min in production)
+  // periodInMinutes: subsequent alarms fire at this interval
+  chrome.alarms.create(REFRESH_ALARM_NAME, {
+    delayInMinutes: Math.max(1, periodInMinutes),
+    periodInMinutes: periodInMinutes
+  });
+  console.log(`Alarm set: first in ${periodInMinutes} min, then every ${periodInMinutes} min`);
+}
+
+// Listen for alarm events (only if alarms API is available)
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === REFRESH_ALARM_NAME) {
+      console.log('Alarm fired: refreshing portfolio data...');
+      try {
+        await fetchAndParsePortfolio();
+        console.log('Alarm refresh completed successfully');
+      } catch (err) {
+        console.warn('Alarm refresh failed:', err.message);
+      }
+    }
+  });
+
+  // Ensure alarm exists on service worker startup (in case it was cleared)
+  (async () => {
+    const alarm = await chrome.alarms.get(REFRESH_ALARM_NAME);
+    if (!alarm) {
+      const data = await chrome.storage.local.get(['settings']);
+      const settings = data.settings || DEFAULT_SETTINGS;
+      await setupRefreshAlarm(settings.cacheDurationMinutes);
+    }
+  })();
+}
 
 // Listen for messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -60,6 +106,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'SAVE_SETTINGS') {
     chrome.storage.local.set({ settings: message.settings })
+      .then(() => setupRefreshAlarm(message.settings.cacheDurationMinutes))
       .then(() => sendResponse({ success: true }))
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -73,6 +120,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         portfolioData: {},
         debugInfo: {}
       }))
+      .then(() => setupRefreshAlarm(DEFAULT_SETTINGS.cacheDurationMinutes))
       .then(() => sendResponse({ success: true }))
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -215,7 +263,7 @@ async function fetchAndParsePortfolio() {
         const response = await fetch(portfolioUrl, { credentials: 'include', cache: 'no-store' });
 
         if (!response.ok) {
-          console.error(`Failed to fetch portfolio "${portfolio.name}" on retry: HTTP ${response.status}`);
+          console.warn(`Failed to fetch portfolio "${portfolio.name}" on retry: HTTP ${response.status}`);
           debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = {
             skipped: `HTTP error ${response.status}`,
             fetchedUrl: portfolioUrl,
@@ -229,7 +277,7 @@ async function fetchAndParsePortfolio() {
         const isCorrectPortfolio = selectedPortfolioId === expectedId;
 
         if (!isCorrectPortfolio) {
-          console.error(`Failed to fetch portfolio "${portfolio.name}" on retry. Expected ID: ${expectedId}, Got: ${selectedPortfolioId}`);
+          console.warn(`Failed to fetch portfolio "${portfolio.name}" on retry. Expected ID: ${expectedId}, Got: ${selectedPortfolioId}`);
           debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = {
             skipped: `mismatch on retry - expected ${expectedId}, got ${selectedPortfolioId}`,
             fetchedUrl: portfolioUrl,
@@ -248,7 +296,7 @@ async function fetchAndParsePortfolio() {
           lastSync: Date.now()
         });
       } catch (err) {
-        console.error(`Error fetching portfolio "${portfolio.name}" on retry:`, err.message);
+        console.warn(`Error fetching portfolio "${portfolio.name}" on retry:`, err.message);
       }
     }
   }

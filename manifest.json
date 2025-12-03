@@ -3,7 +3,7 @@
   "name": "Investing.com Portfolio Overlay",
   "description": "Display your portfolio holdings on investing.com asset pages",
   "version": "1.0.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms"],
   "host_permissions": ["https://www.investing.com/*"],
   "background": {
     "service_worker": "src/background.js"
