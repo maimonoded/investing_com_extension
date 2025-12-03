@@ -64,6 +64,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(err => sendResponse({ error: err.message }));
     return true;
   }
+
+  if (message.type === 'CLEAR_ALL_DATA') {
+    chrome.storage.local.clear()
+      .then(() => chrome.storage.local.set({
+        settings: DEFAULT_SETTINGS,
+        lastSync: null,
+        portfolioData: {},
+        debugInfo: {}
+      }))
+      .then(() => sendResponse({ success: true }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
 });
 
 // Get current status for popup
@@ -123,7 +136,8 @@ function findMatch(portfolioData, symbol, isin, pairId) {
 async function fetchAndParsePortfolio() {
   // First, fetch the main portfolio page to get all tabs
   const mainResponse = await fetch('https://www.investing.com/portfolio/', {
-    credentials: 'include'
+    credentials: 'include',
+    cache: 'no-store'
   });
 
   if (!mainResponse.ok) {
@@ -138,69 +152,171 @@ async function fetchAndParsePortfolio() {
   // Build new data in temporary variable, only overwrite storage when complete
   let newPortfolioData = {};
   let debugInfo = {
-    portfoliosFound: holdingsPortfolios.map(p => ({ id: p.numericId, name: p.name, publicId: p.publicId ? 'yes' : 'no' })),
+    portfoliosFound: holdingsPortfolios.map(p => ({ id: p.numericId, name: p.name, publicId: p.publicId || null })),
     holdingsPerPortfolio: {}
   };
 
-  // Fetch each portfolio using its publicId
-  for (const portfolio of holdingsPortfolios) {
-    try {
-      // Only fetch portfolios that have a publicId - skip others to avoid double-counting from mainHtml
-      if (!portfolio.publicId) {
-        debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = { skipped: 'no publicId', holdings: [] };
-        continue;
-      }
+  // First round: fetch all portfolios quickly with no retries
+  const failedPortfolios = [];
 
-      const portfolioUrl = `https://www.investing.com/portfolio/?portfolioID=${encodeURIComponent(portfolio.publicId)}`;
-      const response = await fetch(portfolioUrl, { credentials: 'include' });
+  for (const portfolio of holdingsPortfolios) {
+    // Only fetch portfolios that have a publicId - skip others to avoid double-counting from mainHtml
+    if (!portfolio.publicId) {
+      debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = { skipped: 'no publicId', holdings: [] };
+      continue;
+    }
+
+    const portfolioUrl = `https://www.investing.com/portfolio/?portfolioID=${encodeURIComponent(portfolio.publicId)}`;
+    const expectedId = portfolio.numericId;
+
+    try {
+      const response = await fetch(portfolioUrl, { credentials: 'include', cache: 'no-store' });
+
       if (!response.ok) {
-        debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = { skipped: `fetch failed: ${response.status}`, holdings: [] };
+        failedPortfolios.push(portfolio);
         continue;
       }
 
       const portfolioHtml = await response.text();
+      const selectedPortfolioId = extractSelectedPortfolioId(portfolioHtml);
+      const isCorrectPortfolio = selectedPortfolioId === expectedId;
 
-      // Parse holdings from this portfolio's HTML
-      const portfolioData = parsePortfolioHTML(portfolioHtml);
-
-      // Store debug info for this portfolio
-      const portfolioKey = portfolio.name || portfolio.numericId;
-      debugInfo.holdingsPerPortfolio[portfolioKey] = {
-        holdingCount: Object.keys(portfolioData).length,
-        holdings: Object.entries(portfolioData).map(([sym, h]) => ({ symbol: sym, qty: h.qty }))
-      };
-
-      // Merge into newPortfolioData
-      for (const [symbol, holding] of Object.entries(portfolioData)) {
-        if (newPortfolioData[symbol]) {
-          // Aggregate quantities and calculate weighted average price
-          const existing = newPortfolioData[symbol];
-          const newQty = existing.qty + holding.qty;
-          const newAvgPrice = (existing.avgPrice * existing.qty + holding.avgPrice * holding.qty) / newQty;
-          const newTotalValue = existing.totalValue + holding.totalValue;
-
-          newPortfolioData[symbol] = {
-            ...existing,
-            qty: newQty,
-            avgPrice: newAvgPrice,
-            totalValue: newTotalValue
-          };
-        } else {
-          newPortfolioData[symbol] = holding;
-        }
+      if (!isCorrectPortfolio) {
+        console.info(`Portfolio "${portfolio.name}" mismatch on first try, will retry later`);
+        failedPortfolios.push(portfolio);
+        continue;
       }
+
+      // Parse and merge holdings
+      mergePortfolioData(newPortfolioData, debugInfo, portfolio, portfolioUrl, portfolioHtml, expectedId, selectedPortfolioId);
     } catch (err) {
-      // Continue with next portfolio
+      failedPortfolios.push(portfolio);
     }
   }
 
+  // Save first round results immediately
   await chrome.storage.local.set({
     portfolioData: newPortfolioData,
     debugInfo: debugInfo,
     lastSync: Date.now()
   });
 
+  // Second round: retry failed portfolios with 10s delay between each
+  if (failedPortfolios.length > 0) {
+    console.info(`Retrying ${failedPortfolios.length} failed portfolio(s) with delays...`);
+
+    for (const portfolio of failedPortfolios) {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      const portfolioUrl = `https://www.investing.com/portfolio/?portfolioID=${encodeURIComponent(portfolio.publicId)}`;
+      const expectedId = portfolio.numericId;
+
+      try {
+        const response = await fetch(portfolioUrl, { credentials: 'include', cache: 'no-store' });
+
+        if (!response.ok) {
+          console.error(`Failed to fetch portfolio "${portfolio.name}" on retry: HTTP ${response.status}`);
+          debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = {
+            skipped: `HTTP error ${response.status}`,
+            fetchedUrl: portfolioUrl,
+            holdings: []
+          };
+          continue;
+        }
+
+        const portfolioHtml = await response.text();
+        const selectedPortfolioId = extractSelectedPortfolioId(portfolioHtml);
+        const isCorrectPortfolio = selectedPortfolioId === expectedId;
+
+        if (!isCorrectPortfolio) {
+          console.error(`Failed to fetch portfolio "${portfolio.name}" on retry. Expected ID: ${expectedId}, Got: ${selectedPortfolioId}`);
+          debugInfo.holdingsPerPortfolio[portfolio.name || portfolio.numericId] = {
+            skipped: `mismatch on retry - expected ${expectedId}, got ${selectedPortfolioId}`,
+            fetchedUrl: portfolioUrl,
+            holdings: []
+          };
+          continue;
+        }
+
+        // Parse and merge holdings
+        mergePortfolioData(newPortfolioData, debugInfo, portfolio, portfolioUrl, portfolioHtml, expectedId, selectedPortfolioId);
+
+        // Save after each successful retry
+        await chrome.storage.local.set({
+          portfolioData: newPortfolioData,
+          debugInfo: debugInfo,
+          lastSync: Date.now()
+        });
+      } catch (err) {
+        console.error(`Error fetching portfolio "${portfolio.name}" on retry:`, err.message);
+      }
+    }
+  }
+
   return newPortfolioData;
+}
+
+// Helper to parse and merge portfolio data
+function mergePortfolioData(newPortfolioData, debugInfo, portfolio, portfolioUrl, portfolioHtml, expectedId, selectedPortfolioId) {
+  const portfolioData = parsePortfolioHTML(portfolioHtml);
+
+  // Store debug info for this portfolio
+  const portfolioKey = portfolio.name || portfolio.numericId;
+  debugInfo.holdingsPerPortfolio[portfolioKey] = {
+    fetchedUrl: portfolioUrl,
+    publicId: portfolio.publicId,
+    expectedId: expectedId,
+    selectedId: selectedPortfolioId,
+    isCorrectPortfolio: true,
+    holdingCount: Object.keys(portfolioData).length,
+    holdings: Object.entries(portfolioData).map(([sym, h]) => ({ symbol: sym, qty: h.qty }))
+  };
+
+  // Merge into newPortfolioData
+  for (const [symbol, holding] of Object.entries(portfolioData)) {
+    if (newPortfolioData[symbol]) {
+      // Aggregate quantities and calculate weighted average price
+      const existing = newPortfolioData[symbol];
+      const newQty = existing.qty + holding.qty;
+      const newAvgPrice = (existing.avgPrice * existing.qty + holding.avgPrice * holding.qty) / newQty;
+      const newTotalValue = existing.totalValue + holding.totalValue;
+
+      newPortfolioData[symbol] = {
+        ...existing,
+        qty: newQty,
+        avgPrice: newAvgPrice,
+        totalValue: newTotalValue
+      };
+    } else {
+      newPortfolioData[symbol] = holding;
+    }
+  }
+}
+
+// Extract the currently selected portfolio ID from the HTML
+function extractSelectedPortfolioId(html) {
+  // Look for the selected/active portfolio tab - it usually has "selected" or "active" class
+  const selectedTabRegex = /<li[^>]+portfolioTab[^>]*(selected|active)[^>]*data-portfolio-id="(\d+)"/i;
+  const match1 = html.match(selectedTabRegex);
+  if (match1) {
+    return match1[2];
+  }
+
+  // Alternative: class might come after data-portfolio-id
+  const selectedTabRegex2 = /<li[^>]+data-portfolio-id="(\d+)"[^>]*(selected|active)/i;
+  const match2 = html.match(selectedTabRegex2);
+  if (match2) {
+    return match2[1];
+  }
+
+  // Fallback: look for any indication of selected state
+  const selectedTabRegex3 = /<li[^>]+portfolioTab\s+selected[^>]*data-portfolio-id="(\d+)"/i;
+  const match3 = html.match(selectedTabRegex3);
+  if (match3) {
+    return match3[1];
+  }
+
+  return null;
 }
 
 // Extract holdings portfolio tabs from the main page HTML

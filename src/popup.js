@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const refreshBtn = document.getElementById('refreshBtn');
   const saveBtn = document.getElementById('saveBtn');
   const debugBtn = document.getElementById('debugBtn');
+  const clearBtn = document.getElementById('clearBtn');
   const debugOutput = document.getElementById('debugOutput');
   const cacheDurationInput = document.getElementById('cacheDuration');
   const monitoredPathsInput = document.getElementById('monitoredPaths');
@@ -116,6 +117,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       debugOutput.style.display = 'block';
       debugOutput.textContent = 'Error: ' + err.message;
+    }
+  });
+
+  // Clear data button handler
+  clearBtn.addEventListener('click', async () => {
+    if (!confirm('Clear all portfolio data and settings?')) {
+      return;
+    }
+    try {
+      await chrome.runtime.sendMessage({ type: 'CLEAR_ALL_DATA' });
+      debugOutput.style.display = 'none';
+      await loadStatus();
+      clearBtn.textContent = 'Cleared!';
+      setTimeout(() => {
+        clearBtn.textContent = 'Clear All Data';
+      }, 1500);
+    } catch (err) {
+      alert('Failed to clear data: ' + err.message);
     }
   });
 });
