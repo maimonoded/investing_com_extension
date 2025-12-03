@@ -62,3 +62,7 @@ The extension implements a two-round retry mechanism:
 2. Failed portfolios are retried with 10-second delays between each attempt
 
 This retry mechanism helps in many cases but does not guarantee 100% success rate. If you notice missing holdings, try clicking "Force Refresh" in the extension popup.
+
+## Credits
+
+Most of the code in this project was generated with [Claude](https://claude.ai) by Anthropic.
