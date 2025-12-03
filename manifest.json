@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.investing.com/*"],
-      "js": ["src/content.js"],
+      "js": ["src/panel-state.js", "src/panel-ui.js", "src/content.js"],
       "css": ["src/content.css"],
       "run_at": "document_idle"
     }
