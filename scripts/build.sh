@@ -35,9 +35,9 @@ cd "$ROOT_DIR"
 zip -r "$BUILD_DIR/$ZIP_NAME" \
   manifest.json \
   src/ \
-  publishing/icons/icon16.png \
-  publishing/icons/icon48.png \
-  publishing/icons/icon128.png \
+  publishing/icons/icon16-trans.png \
+  publishing/icons/icon48-trans.png \
+  publishing/icons/icon128-trans.png \
   -x "*.DS_Store"
 
 echo ""

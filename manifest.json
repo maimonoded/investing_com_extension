@@ -4,9 +4,9 @@
   "description": "Display your portfolio holdings on investing.com asset pages",
   "version": "1.1.0",
   "icons": {
-    "16": "publishing/icons/icon16.png",
-    "48": "publishing/icons/icon48.png",
-    "128": "publishing/icons/icon128.png"
+    "16": "publishing/icons/icon16-trans.png",
+    "48": "publishing/icons/icon48-trans.png",
+    "128": "publishing/icons/icon128-trans.png"
   },
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://www.investing.com/*"],
@@ -25,8 +25,8 @@
     "default_popup": "src/popup.html",
     "default_title": "Portfolio Overlay",
     "default_icon": {
-      "16": "publishing/icons/icon16.png",
-      "48": "publishing/icons/icon48.png"
+      "16": "publishing/icons/icon16-trans.png",
+      "48": "publishing/icons/icon48-trans.png"
     }
   }
 }
