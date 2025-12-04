@@ -39,6 +39,7 @@ async function init() {
     const response = await chrome.runtime.sendMessage({
       type: 'GET_PORTFOLIO_DATA',
       symbol: assetInfo.symbol,
+      exchange: assetInfo.exchange,
       isin: assetInfo.isin,
       pairId: assetInfo.pairId
     });
@@ -86,6 +87,7 @@ function extractAssetInfo() {
 
       return {
         symbol: data.SYMBOL || null,
+        exchange: data.EXCHANGE_SYMBOL || null,
         isin: data.ISIN || null,
         fullName: data.FULL_NAME || data.SHORT_NAME || null,
         lastPrice: data.LAST_PRICE || null,
@@ -104,6 +106,7 @@ function extractAssetInfo() {
       if (data.tickersymbol) {
         return {
           symbol: data.tickersymbol,
+          exchange: null,
           isin: null,
           fullName: data.legalname || null,
           lastPrice: null,

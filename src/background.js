@@ -64,7 +64,7 @@ if (chrome.alarms) {
 // Listen for messages from content script and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_PORTFOLIO_DATA') {
-    handleGetPortfolioData(message.symbol, message.isin, message.pairId)
+    handleGetPortfolioData(message.symbol, message.exchange, message.isin, message.pairId)
       .then(sendResponse)
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -93,8 +93,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         holdingsPerPortfolio: debugInfo.holdingsPerPortfolio || {},
         aggregatedHoldings: {}
       };
-      for (const [symbol, holding] of Object.entries(data.portfolioData || {})) {
-        result.aggregatedHoldings[symbol] = { qty: holding.qty, avgPrice: holding.avgPrice, currency: holding.currency };
+      for (const [key, holding] of Object.entries(data.portfolioData || {})) {
+        result.aggregatedHoldings[key] = { symbol: holding.symbol, exchange: holding.exchange, qty: holding.qty, avgPrice: holding.avgPrice, currency: holding.currency };
       }
       sendResponse(result);
     });
@@ -135,7 +135,7 @@ async function getStatus() {
 }
 
 // Handle portfolio data request from content script
-async function handleGetPortfolioData(symbol, isin, pairId) {
+async function handleGetPortfolioData(symbol, exchange, isin, pairId) {
   const data = await chrome.storage.local.get(['settings', 'lastSync', 'portfolioData']);
   const settings = data.settings || DEFAULT_SETTINGS;
   const lastSync = data.lastSync;
@@ -152,13 +152,21 @@ async function handleGetPortfolioData(symbol, isin, pairId) {
   }
 
   // Find matching holding
-  const match = findMatch(portfolioData, symbol, isin, pairId);
+  const match = findMatch(portfolioData, symbol, exchange, isin, pairId);
   return { match, lastSync: data.lastSync };
 }
 
-// Find a matching holding by symbol, ISIN, or pairId
-function findMatch(portfolioData, symbol, isin, pairId) {
-  // Try exact symbol match first
+// Find a matching holding by symbol+exchange, symbol, ISIN, or pairId
+function findMatch(portfolioData, symbol, exchange, isin, pairId) {
+  // Try exact symbol:exchange match first (preferred)
+  if (symbol && exchange) {
+    const key = `${symbol}:${exchange}`;
+    if (portfolioData[key]) {
+      return portfolioData[key];
+    }
+  }
+
+  // Try symbol-only match (legacy/fallback for holdings without exchange)
   if (symbol && portfolioData[symbol]) {
     return portfolioData[symbol];
   }
@@ -314,26 +322,26 @@ function mergePortfolioData(newPortfolioData, debugInfo, portfolio, portfolioUrl
     selectedId: selectedPortfolioId,
     isCorrectPortfolio: true,
     holdingCount: Object.keys(portfolioData).length,
-    holdings: Object.entries(portfolioData).map(([sym, h]) => ({ symbol: sym, qty: h.qty }))
+    holdings: Object.entries(portfolioData).map(([key, h]) => ({ symbol: h.symbol, exchange: h.exchange, qty: h.qty }))
   };
 
-  // Merge into newPortfolioData
-  for (const [symbol, holding] of Object.entries(portfolioData)) {
-    if (newPortfolioData[symbol]) {
+  // Merge into newPortfolioData (keys are already symbol:exchange format)
+  for (const [key, holding] of Object.entries(portfolioData)) {
+    if (newPortfolioData[key]) {
       // Aggregate quantities and calculate weighted average price
-      const existing = newPortfolioData[symbol];
+      const existing = newPortfolioData[key];
       const newQty = existing.qty + holding.qty;
       const newAvgPrice = (existing.avgPrice * existing.qty + holding.avgPrice * holding.qty) / newQty;
       const newTotalValue = existing.totalValue + holding.totalValue;
 
-      newPortfolioData[symbol] = {
+      newPortfolioData[key] = {
         ...existing,
         qty: newQty,
         avgPrice: newAvgPrice,
         totalValue: newTotalValue
       };
     } else {
-      newPortfolioData[symbol] = holding;
+      newPortfolioData[key] = holding;
     }
   }
 }
@@ -430,6 +438,10 @@ function parsePortfolioHTML(html) {
       const symbolMatch = trContent.match(/data-column-name="sum_pos_fpb_symbols"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
       const symbol = symbolMatch ? symbolMatch[1].trim() : '';
 
+      // Extract exchange from td with data-column-name="exchange"
+      const exchangeMatch = trContent.match(/data-column-name="exchange"[^>]*title="([^"]*)"/i);
+      const exchange = exchangeMatch ? exchangeMatch[1].trim() : '';
+
       // Extract market value from td with data-column-name="sum_pos_market_value"
       const valueMatch = trContent.match(/data-column-name="sum_pos_market_value"[^>]*?title="([^"]*)"/i);
       const totalValueStr = valueMatch ? valueMatch[1] : '';
@@ -448,22 +460,26 @@ function parsePortfolioHTML(html) {
       const url = urlMatch ? urlMatch[1] : '';
 
       if (symbol) {
-        if (portfolioData[symbol]) {
-          // Same symbol - aggregate quantities and calculate weighted average price
-          const existing = portfolioData[symbol];
+        // Use symbol:exchange as the key to distinguish same ticker on different exchanges
+        const key = exchange ? `${symbol}:${exchange}` : symbol;
+
+        if (portfolioData[key]) {
+          // Same symbol on same exchange - aggregate quantities and calculate weighted average price
+          const existing = portfolioData[key];
           const newQty = existing.qty + amount;
           const newAvgPrice = (existing.avgPrice * existing.qty + avgPrice * amount) / newQty;
           const newTotalValue = existing.totalValue + totalValue;
 
-          portfolioData[symbol] = {
+          portfolioData[key] = {
             ...existing,
             qty: newQty,
             avgPrice: newAvgPrice,
             totalValue: newTotalValue
           };
         } else {
-          portfolioData[symbol] = {
+          portfolioData[key] = {
             symbol,
+            exchange,
             name,
             fullName,
             pairId,
